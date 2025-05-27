@@ -17,9 +17,10 @@ import {
     drawVisibilityScores,
 } from '../utils/poseHelpers';
 import { LANDMARK_LABELS, FRONT_VIEW_CONNECTIONS, LEFT_VIEW_CONNECTIONS, RIGHT_VIEW_CONNECTIONS, PersonOrientation } from '../utils/landmarklabels';
+import { useDepthEstimator } from '../hooks/useDepthEstimater';
 
 const PoseTracker: React.FC = () => {
-    const videoRef = useRef<HTMLVideoElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const poseLandmarkerRef = useRef<PoseLandmarker | null>(null);
     const animationFrameRef = useRef<number | null>(null);
@@ -46,6 +47,7 @@ const PoseTracker: React.FC = () => {
     const backgroundImage = useRef<HTMLImageElement | null>(null);
     const [backgroundReady, setBackgroundReady] = useState(false);
     const [feetY, setFeetY] = useState(0);
+    const { estimateFloorDepth } = useDepthEstimator(videoRef);
     const enterFullscreen = () => {
         const container = containerRef.current;
         if (!container) return;
@@ -149,11 +151,9 @@ const PoseTracker: React.FC = () => {
         // === Blending (segmentation) ===
         const rawCtx = rawCanvasRef.current?.getContext('2d', { willReadFrequently: true });
         const mask = segmentationResult?.categoryMask?.getAsUint8Array();
-        const floorY = estimateFloorYFromSegmentation(mask, canvas.width, canvas.height);
-        if (floorY !== null) {
-            setFeetY(floorY);
-        }
+
         const results = poseResultsRef.current;
+
         let personPixelCount = 0;
         const landmarkPixelSet = new Set<number>();
 
@@ -276,6 +276,12 @@ const PoseTracker: React.FC = () => {
 
         // === Pose Landmark Drawing ===
         if (results?.landmarks?.length > 0 && personPixelCount > 1000) {
+
+            const depthZ = await estimateFloorDepth();
+            if (depthZ != null) {
+                setFeetY(depthZ); // or normalize relative to pose
+            }
+
             const landmark = results.landmarks[0];
 
             const midX = (landmark[23].x + landmark[24].x) / 2;

@@ -26,7 +26,7 @@ const GridTunnel = () => {
 
 const GridFloor = ({ y }: { y: number }) => {
     return (
-        <gridHelper args={[40, 40, "#00ffff", "#00ffff"]} rotation={[0, 0, 0]} position={[0, y, 0]} />
+        <gridHelper args={[40, 40, "#00ffff", "#00ffff"]} rotation={[0, 0, 0]} position={[0, 0, y]} />
     );
 };
 const ResizeCamera = () => {
