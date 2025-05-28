@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { OrbitControls } from "@react-three/drei";
 type ThreeGridProps = {
     userPosition: [number, number, number];
-    feetY: number; // <- NEW: Y coordinate of feet in world space
+    feetY: [number, number, number]; // <- NEW: Y coordinate of feet in world space
 };
 const GridTunnel = () => {
     const rects = [];
@@ -24,9 +24,9 @@ const GridTunnel = () => {
     return <group>{rects}</group>;
 };
 
-const GridFloor = ({ y }: { y: number }) => {
+const GridFloor = ({ y }: { y: [number, number, number] }) => {
     return (
-        <gridHelper args={[40, 40, "#00ffff", "#00ffff"]} rotation={[0, 0, 0]} position={[0, 0, y]} />
+        <gridHelper args={[40, 40, "#00ffff", "#00ffff"]} rotation={[0, 0, 0]} position={y} />
     );
 };
 const ResizeCamera = () => {
@@ -51,7 +51,7 @@ const ThreeGrid = ({ userPosition, feetY }: ThreeGridProps) => {
                 left: 0,
                 width: "100%",
                 height: "100%",
-                zIndex: 2,
+                zIndex: 1,
                 pointerEvents: "none",
             }}
         >

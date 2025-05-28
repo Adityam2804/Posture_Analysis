@@ -17,7 +17,7 @@ import {
     drawVisibilityScores,
 } from '../utils/poseHelpers';
 import { LANDMARK_LABELS, FRONT_VIEW_CONNECTIONS, LEFT_VIEW_CONNECTIONS, RIGHT_VIEW_CONNECTIONS, PersonOrientation } from '../utils/landmarklabels';
-import { useDepthEstimator } from '../hooks/useDepthEstimater';
+
 
 const PoseTracker: React.FC = () => {
     const videoRef = useRef<HTMLVideoElement>(null) as React.RefObject<HTMLVideoElement>;
@@ -46,8 +46,9 @@ const PoseTracker: React.FC = () => {
     const [userPosition, setUserPosition] = useState<[number, number, number]>([0, 0, 0]);
     const backgroundImage = useRef<HTMLImageElement | null>(null);
     const [backgroundReady, setBackgroundReady] = useState(false);
-    const [feetY, setFeetY] = useState(0);
-    const { estimateFloorDepth } = useDepthEstimator(videoRef);
+    const [feetY, setFeetY] = useState<[number, number, number]>([0, 0, 0]);
+
+    const lastEstimateRef = useRef(0);
     const enterFullscreen = () => {
         const container = containerRef.current;
         if (!container) return;
@@ -207,15 +208,15 @@ const PoseTracker: React.FC = () => {
             const blended = blendedRef.current;
 
             // Step 3: Draw background image
-            const bgImg = backgroundImage.current;
-            if (bgImg && bgImg.width > 0 && bgImg.height > 0) {
-                drawBackgroundCover(ctx, bgImg);
+            // const bgImg = backgroundImage.current;
+            // if (bgImg && bgImg.width > 0 && bgImg.height > 0) {
+            //     drawBackgroundCover(ctx, bgImg);
 
-            } else {
-                ctx.fillStyle = '#222';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-            }
-            const bgImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            // } else {
+            //     ctx.fillStyle = '#222';
+            //     ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // }
+            // const bgImage = ctx.getImageData(0, 0, canvas.width, canvas.height);
             // Step 4: Blend only person pixels from original image into the blended buffer
 
             for (let i = 0; i < mask.length; i++) {
@@ -231,10 +232,10 @@ const PoseTracker: React.FC = () => {
                     blended.data[offset + 3] = 255;
                     personPixelCount++;
                 } else {
-                    blended.data[offset] = bgImage.data[offset];
-                    blended.data[offset + 1] = bgImage.data[offset + 1];
-                    blended.data[offset + 2] = bgImage.data[offset + 2];
-                    blended.data[offset + 3] = 255;
+                    blended.data[offset] = 0;
+                    blended.data[offset + 1] = 0;
+                    blended.data[offset + 2] = 0;
+                    blended.data[offset + 3] = 0; // <-- Transparency!
                 }
             }
 
@@ -276,21 +277,37 @@ const PoseTracker: React.FC = () => {
 
         // === Pose Landmark Drawing ===
         if (results?.landmarks?.length > 0 && personPixelCount > 1000) {
+            const landmark = results.landmarks[0];
 
-            const depthZ = await estimateFloorDepth();
-            if (depthZ != null) {
-                setFeetY(depthZ); // or normalize relative to pose
+            // Get left and right ankle (landmarks 31 & 32)
+            const leftFoot = landmark[31];
+            const rightFoot = landmark[32];
+
+            if (leftFoot && rightFoot && leftFoot.visibility > 0.5 && rightFoot.visibility > 0.5) {
+                // Average position
+                const avgX = (leftFoot.x + rightFoot.x) / 2;
+                const avgY = (leftFoot.y + rightFoot.y) / 2;
+                const avgZ = leftFoot.z ?? 0;
+
+                // Convert to world space
+                const worldX = (avgX - 0.5) * 3;
+                const worldY = (0.5 - avgY) * 25;
+                const worldZ = -avgZ * 6;
+
+                const feetPosition: [number, number, number] = [worldX, worldY, worldZ];
+
+                setFeetY(feetPosition);
             }
 
-            const landmark = results.landmarks[0];
+
 
             const midX = (landmark[23].x + landmark[24].x) / 2;
             const midY = (landmark[23].y + landmark[24].y) / 2;
             const poseZ = landmark[23].z ?? 0;
 
-            const mappedX = (midX - 0.5) * 3;      // [-1.5, 1.5]
-            const mappedY = (0.5 - midY) * 5;      // [0, 2.5]
-            const mappedZ = -poseZ * 4;            // Negative to push back
+            const mappedX = (midX - 0.5) * 3;
+            const mappedY = (0.5 - midY) * 5;
+            const mappedZ = -poseZ * 4;
 
             setUserPosition([mappedX, mappedY, mappedZ]);
 
@@ -480,16 +497,7 @@ const PoseTracker: React.FC = () => {
             <h1>Using Normalized Landmarks</h1>
             <div style={{ marginBottom: '10px' }}>
                 <Button onClick={enterFullscreen}>Toggle Fullscreen</Button>
-                <label>Floor Y Position: {feetY.toFixed(2)}</label>
-                <input
-                    type="range"
-                    min={-2}
-                    max={2}
-                    step={0.01}
-                    value={feetY}
-                    onChange={(e) => setFeetY(parseFloat(e.target.value))}
-                    style={{ width: "100%" }}
-                />
+
             </div>
 
             <div
@@ -506,18 +514,24 @@ const PoseTracker: React.FC = () => {
             >
                 <video
                     ref={videoRef}
+                    style={{ display: 'none' }}
+                    muted
+                    playsInline
+                />
+                {/* <img
+                    ref={backgroundImage}
+
+                    alt="Background"
                     style={{
                         position: 'absolute',
                         top: 0,
                         left: 0,
                         width: '100%',
                         height: '100%',
-                        objectFit: 'contain',
-                        zIndex: 0
+                        objectFit: 'cover',
+                        zIndex: 0,
                     }}
-                    muted
-                    playsInline
-                />
+                /> */}
                 <ThreeGrid userPosition={userPosition} feetY={feetY} />
                 <canvas ref={rawCanvasRef} width={640} height={480} style={{ display: 'none' }} />
                 <canvas
@@ -530,7 +544,7 @@ const PoseTracker: React.FC = () => {
                         left: 0,
                         width: '100%',
                         height: '100%',
-                        zIndex: 1,
+                        zIndex: 2,
                         objectFit: 'contain',
                     }}
                 />
