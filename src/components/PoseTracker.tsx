@@ -29,12 +29,12 @@ const PoseTracker: React.FC = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [orientationConfidence, setorientationConfidence] = useState<number | null>(null);
     const [visibleIndices, setVisibleIndices] = useState<number[]>([]);
-    const FRAME_INTERVAL = 1000 / 24; // 30 FPS
+    const FRAME_INTERVAL = 1000 / 24;
     let lastTime = 0;
     const segmenterRef = useRef<ImageSegmenter | null>(null);
     const rawCanvasRef = useRef<HTMLCanvasElement>(null);
-    const SEGMENTATION_INTERVAL = 100; // ms ~10 FPS
-    const POSE_INTERVAL = 66; // ms ~15 FPS
+    const SEGMENTATION_INTERVAL = 100;
+    const POSE_INTERVAL = 66;
     let lastSegmentTime = 0;
     let lastPoseTime = 0;
     const blendedRef = useRef<ImageData | null>(null);
@@ -47,8 +47,18 @@ const PoseTracker: React.FC = () => {
     const backgroundImage = useRef<HTMLImageElement | null>(null);
     const [backgroundReady, setBackgroundReady] = useState(false);
     const [feetY, setFeetY] = useState<[number, number, number]>([0, 0, 0]);
-
+    const [poseState, setPoseState] = useState<PoseState>("searching");
     const lastEstimateRef = useRef(0);
+    type PoseState = "searching" | "aligning" | "locked" | "too_far" | "too_close";
+    const stabilityStartRef = useRef<number | null>(null);
+    const [frozenFeetY, setFrozenFeetY] = useState<[number, number, number] | null>(null);
+    const freezeGridAt = (feet: [number, number, number]) => {
+        if (!frozenFeetY) {
+            setFrozenFeetY(feet);
+            console.log("✅ Grid locked at:", feet);
+        }
+    };
+
     const enterFullscreen = () => {
         const container = containerRef.current;
         if (!container) return;
@@ -94,8 +104,8 @@ const PoseTracker: React.FC = () => {
         ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, ctx.canvas.width, ctx.canvas.height);
     };
     function estimateFloorYFromSegmentation(mask: Uint8Array, width: number, height: number): number | null {
-        const personLabels = new Set([1, 2, 3, 4]); // Your person classes
-        const threshold = width * 0.05; // How many pixels count as "solid floor" in a row
+        const personLabels = new Set([1, 2, 3, 4]);
+        const threshold = width * 0.05;
 
         for (let row = height - 1; row >= 0; row--) {
             let count = 0;
@@ -106,8 +116,8 @@ const PoseTracker: React.FC = () => {
 
             if (count > threshold) {
                 // Found floor row!
-                const normalizedY = row / height;      // 0 (top) to 1 (bottom)
-                const worldY = (0.5 - normalizedY) * 5; // Flip + scale to match Three.js
+                const normalizedY = row / height;
+                const worldY = (0.5 - normalizedY) * 5;
                 return worldY;
             }
         }
@@ -132,13 +142,13 @@ const PoseTracker: React.FC = () => {
 
         const now = performance.now();
 
-        // === Throttled Pose Detection ===
+
         if (now - lastPoseTime > POSE_INTERVAL) {
             poseResultsRef.current = poseLandmarkerRef.current.detectForVideo(video, now);
             lastPoseTime = now;
         }
 
-        // === Throttled Segmentation ===
+
         let segmentationResult = null;
 
         if (now - lastSegmentTime > SEGMENTATION_INTERVAL) {
@@ -164,22 +174,21 @@ const PoseTracker: React.FC = () => {
             for (let i = 0; i < points.length; i++) {
                 const pt = points[i];
 
-                // OPTIONAL: Add smoothed visibility check here
                 const vis = getSmoothedVisibility(visibilityHistory.current, i);
                 const minThreshold = getAdaptiveThreshold(i);
-                if (vis < minThreshold * 0.75) continue; // make threshold more permissive
+                if (vis < minThreshold * 0.75) continue;
 
                 const x = Math.floor(pt.x * canvas.width);
                 const y = Math.floor(pt.y * canvas.height);
 
-                const radius = 10; // more lenient coverage
+                const radius = 10;
 
                 for (let dy = -radius; dy <= radius; dy++) {
                     for (let dx = -radius; dx <= radius; dx++) {
                         const nx = x + dx;
                         const ny = y + dy;
 
-                        // Make inclusion circular (optional for realism)
+
                         if (dx * dx + dy * dy > radius * radius) continue;
 
                         if (nx >= 0 && nx < canvas.width && ny >= 0 && ny < canvas.height) {
@@ -193,11 +202,11 @@ const PoseTracker: React.FC = () => {
 
         if (rawCtx && segmentationResult?.categoryMask && mask) {
 
-            // Step 1: Get original video frame
+
             rawCtx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const original = rawCtx.getImageData(0, 0, canvas.width, canvas.height);
 
-            // Step 2: Prepare blended ImageData buffer (create once or when resized)
+
             if (
                 !blendedRef.current ||
                 blendedRef.current.width !== canvas.width ||
@@ -235,16 +244,16 @@ const PoseTracker: React.FC = () => {
                     blended.data[offset] = 0;
                     blended.data[offset + 1] = 0;
                     blended.data[offset + 2] = 0;
-                    blended.data[offset + 3] = 0; // <-- Transparency!
+                    blended.data[offset + 3] = 0;
                 }
             }
 
-            // Skip drawing if no person pixels are found
+
             if (personPixelCount > 1000) {
                 ctx.putImageData(blended, 0, 0);
             }
             if (personPixelCount < 1000) return;
-            // Step 5: Blur face region
+
             const results = poseResultsRef.current;
             if (results?.landmarks?.length > 0 && personPixelCount > 1000) {
                 const faceIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -279,24 +288,23 @@ const PoseTracker: React.FC = () => {
         if (results?.landmarks?.length > 0 && personPixelCount > 1000) {
             const landmark = results.landmarks[0];
 
-            // Get left and right ankle (landmarks 31 & 32)
+
             const leftFoot = landmark[31];
             const rightFoot = landmark[32];
 
             if (leftFoot && rightFoot && leftFoot.visibility > 0.5 && rightFoot.visibility > 0.5) {
-                // Average position
+
                 const avgX = (leftFoot.x + rightFoot.x) / 2;
                 const avgY = (leftFoot.y + rightFoot.y) / 2;
                 const avgZ = leftFoot.z ?? 0;
-
-                // Convert to world space
                 const worldX = (avgX - 0.5) * 3;
-                const worldY = (0.5 - avgY) * 25;
+                const worldY = (0.5 - avgY) * 20;
                 const worldZ = -avgZ * 6;
 
                 const feetPosition: [number, number, number] = [worldX, worldY, worldZ];
-
-                setFeetY(feetPosition);
+                if (frozenFeetY == null) {
+                    setFeetY(feetPosition);
+                }
             }
 
 
@@ -319,7 +327,7 @@ const PoseTracker: React.FC = () => {
             setOrientation(currentOrientation);
             setorientationConfidence(orientationConfidence);
 
-            // Precompute connections
+
             const connections =
                 currentOrientation === PersonOrientation.LEFT
                     ? LEFT_VIEW_CONNECTIONS
@@ -327,17 +335,16 @@ const PoseTracker: React.FC = () => {
                         ? RIGHT_VIEW_CONNECTIONS
                         : FRONT_VIEW_CONNECTIONS;
 
-            // Reuse these constants outside the loop if needed
+
             const EXCLUDED_FACE_INDICES = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
-            // Pre-mask landmarks only once
+
             const maskedLandmarks = landmark.map((point: NormalizedLandmark, index: number) =>
                 EXCLUDED_FACE_INDICES.has(index)
                     ? { ...point, visibility: 0, x: 0, y: 0, z: 0 }
                     : point
             );
 
-            // Set of needed indices
             const requiredIndices = new Set<number>();
             connections.forEach(({ start, end }) => {
                 requiredIndices.add(start);
@@ -350,6 +357,38 @@ const PoseTracker: React.FC = () => {
                 getSmoothedVisibility(visibilityHistory.current, index) >
                 getAdaptiveThreshold(index)
             );
+            const feetVisible = leftFoot.visibility > 0.5 || rightFoot.visibility > 0.5;
+            const allKeypointsVisible = allVisible; // already computed earlier
+            const poseDepthZ = userPosition[2];
+
+
+            const MIN_DEPTH = -1.5;
+            const MAX_DEPTH = -4.5;
+
+            if (!feetVisible) {
+                setPoseState("too_close");
+                stabilityStartRef.current = null;
+            }
+            else if (allKeypointsVisible) {
+                setPoseState("aligning");
+
+                if (stabilityStartRef.current === null) {
+                    stabilityStartRef.current = Date.now();
+                } else if (Date.now() - stabilityStartRef.current > 1000) {
+                    setPoseState("locked");
+                    freezeGridAt(feetY);
+                }
+            }
+            else if (poseDepthZ > MIN_DEPTH) {
+                setPoseState("too_close");
+                stabilityStartRef.current = null;
+            } else if (poseDepthZ < MAX_DEPTH) {
+                setPoseState("too_far");
+                stabilityStartRef.current = null;
+            } else {
+                stabilityStartRef.current = null;
+            }
+
 
             const drawLandmarkPoint = (point: NormalizedLandmark) => {
                 const x = Math.floor(point.x * canvas.width);
@@ -403,7 +442,7 @@ const PoseTracker: React.FC = () => {
             };
 
 
-            // Draw only if all important points are visible
+
             if (allVisible) {
                 Array.from(requiredIndices).forEach((index) => {
                     drawLandmarkPoint(maskedLandmarks[index]);
@@ -532,7 +571,7 @@ const PoseTracker: React.FC = () => {
                         zIndex: 0,
                     }}
                 /> */}
-                <ThreeGrid userPosition={userPosition} feetY={feetY} />
+                <ThreeGrid userPosition={userPosition} feetY={frozenFeetY ?? feetY} poseState={poseState} />
                 <canvas ref={rawCanvasRef} width={640} height={480} style={{ display: 'none' }} />
                 <canvas
                     ref={canvasRef}
