@@ -8,6 +8,7 @@ import {
 } from '@mediapipe/tasks-vision';
 import { determineOrientation } from '../utils/poseHelpers';
 import { Button } from 'antd';
+import { FullscreenOutlined } from '@ant-design/icons';
 import ThreeGrid from './ThreeGrid';
 import {
     updateVisibilityHistory,
@@ -52,10 +53,14 @@ const PoseTracker: React.FC = () => {
     type PoseState = "searching" | "aligning" | "locked" | "too_far" | "too_close";
     const stabilityStartRef = useRef<number | null>(null);
     const [frozenFeetY, setFrozenFeetY] = useState<[number, number, number] | null>(null);
+    type BackgroundMode = 'blank' | 'image' | 'grid';
+    const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('blank');
+    const [customImage, setCustomImage] = useState<string | null>(null);
+
     const freezeGridAt = (feet: [number, number, number]) => {
         if (!frozenFeetY) {
             setFrozenFeetY(feet);
-            console.log("✅ Grid locked at:", feet);
+
         }
     };
 
@@ -533,10 +538,68 @@ const PoseTracker: React.FC = () => {
 
     return (
         <>
-            <h1>Using Normalized Landmarks</h1>
-            <div style={{ marginBottom: '10px' }}>
-                <Button onClick={enterFullscreen}>Toggle Fullscreen</Button>
 
+
+
+            <div style={{ marginBottom: '16px', textAlign: 'center' }}>
+                <div style={{ marginBottom: '8px', fontWeight: 'bold', fontSize: '16px' }}>
+                    Select Background Mode
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+
+                    <Button
+                        type={backgroundMode === 'blank' ? 'primary' : 'default'}
+                        onClick={() => setBackgroundMode('blank')}
+                    >
+                        Blank
+                    </Button>
+                    <Button
+                        type={backgroundMode === 'image' ? 'primary' : 'default'}
+                        onClick={() => setBackgroundMode('image')}
+                    >
+                        Image
+                    </Button>
+                    <Button
+                        type={backgroundMode === 'grid' ? 'primary' : 'default'}
+                        onClick={() => setBackgroundMode('grid')}
+                    >
+                        Grid
+                    </Button>
+                    <label htmlFor="bg-upload" style={{ margin: 0 }}>
+                        <input
+                            id="bg-upload"
+                            type="file"
+                            accept="image/*"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    const url = URL.createObjectURL(file);
+                                    setCustomImage(url);
+                                    setBackgroundMode('image');
+                                }
+                            }}
+                        />
+                        <Button
+                            type='default'
+                            onClick={() => {
+                                document.getElementById('bg-upload')?.click();
+                            }}
+                        >
+                            Choose Image
+                        </Button>
+                        <Button
+                            type='default'
+                            disabled={!customImage}
+                            onClick={() => {
+                                setCustomImage(null);
+
+                            }}
+                        >
+                            Remove Custom Image
+                        </Button>
+                    </label>
+                </div>
             </div>
 
             <div
@@ -557,9 +620,24 @@ const PoseTracker: React.FC = () => {
                     muted
                     playsInline
                 />
-                {/* <img
-                    ref={backgroundImage}
+                <Button
+                    shape="circle"
+                    icon={<FullscreenOutlined />}
+                    onClick={enterFullscreen}
+                    style={{
+                        position: 'absolute',
+                        top: 10,
+                        right: 10,
+                        zIndex: 3,
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        color: '#fff',
+                        border: 'none',
+                    }}
+                />
 
+                {backgroundMode === 'image' && (<img
+                    ref={backgroundImage}
+                    src={customImage || '../../assets/bridge.jpeg'}
                     alt="Background"
                     style={{
                         position: 'absolute',
@@ -570,8 +648,8 @@ const PoseTracker: React.FC = () => {
                         objectFit: 'cover',
                         zIndex: 0,
                     }}
-                /> */}
-                <ThreeGrid userPosition={userPosition} feetY={frozenFeetY ?? feetY} poseState={poseState} />
+                />)}
+                <ThreeGrid userPosition={userPosition} feetY={frozenFeetY ?? feetY} poseState={poseState} showGrid={backgroundMode === 'grid'} />
                 <canvas ref={rawCanvasRef} width={640} height={480} style={{ display: 'none' }} />
                 <canvas
                     ref={canvasRef}
