@@ -617,7 +617,7 @@ const PoseTracker: React.FC = () => {
 
     return (
         <>
-            {backgroundMode === 'grid-avatar' && <AvatarFromPose poseLandmarks={poseResultsRef.current?.landmarks?.[0] ?? null} poseWorldLandmarks={poseResultsRef.current?.worldLandmarks?.[0] ?? null} fullVisible={fullbodyMode} orientation={orientation} />}
+
             <div style={{ marginBottom: '16px', textAlign: 'center' }}>
 
                 <div style={{ marginBottom: '8px', fontWeight: 'bold', fontSize: '16px' }}>
@@ -698,9 +698,8 @@ const PoseTracker: React.FC = () => {
                     backgroundColor: '#000',
                 }}
             >
-
+                {backgroundMode === 'grid-avatar' && <AvatarFromPose poseLandmarks={poseResultsRef.current?.landmarks?.[0] ?? null} poseWorldLandmarks={poseResultsRef.current?.worldLandmarks?.[0] ?? null} fullVisible={fullbodyMode} orientation={orientation} />}
                 <video
-
                     ref={videoRef}
                     style={{ display: 'none' }}
                     muted

@@ -1,13 +1,11 @@
 import { Canvas, useThree } from "@react-three/fiber";
 import * as THREE from "three";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Text } from "@react-three/drei";
 import { useSpring, animated } from '@react-spring/three';
-import { OrbitControls } from "@react-three/drei";
-import { useGLTF } from '@react-three/drei';
-import AvatarRigged from "./Avatar";
+
 import { NormalizedLandmark } from "@mediapipe/tasks-vision";
-import AvatarFromPose from "./AvatarFromPose";
+
 type ThreeGridProps = {
     userPosition: [number, number, number];
     feetY: [number, number, number]; // <- NEW: Y coordinate of feet in world space
@@ -17,23 +15,23 @@ type ThreeGridProps = {
     poseWorldLandmarks?: NormalizedLandmark[] | null;
 };
 
-const GridTunnel = () => {
-    const rects = [];
-    const depth = 10;
-    const spacing = 2;
+// const GridTunnel = () => {
+//     const rects = [];
+//     const depth = 10;
+//     const spacing = 2;
 
-    for (let i = 1; i <= depth; i++) {
-        const size = i * 2;
-        rects.push(
-            <lineSegments key={i} position={[0, 0, -i * spacing]}>
-                <edgesGeometry attach="geometry" args={[new THREE.PlaneGeometry(size, size)]} />
-                <lineBasicMaterial color="#00ffff" />
-            </lineSegments>
-        );
-    }
+//     for (let i = 1; i <= depth; i++) {
+//         const size = i * 2;
+//         rects.push(
+//             <lineSegments key={i} position={[0, 0, -i * spacing]}>
+//                 <edgesGeometry attach="geometry" args={[new THREE.PlaneGeometry(size, size)]} />
+//                 <lineBasicMaterial color="#00ffff" />
+//             </lineSegments>
+//         );
+//     }
 
-    return <group>{rects}</group>;
-};
+//     return <group>{rects}</group>;
+// };
 
 const GridFloor = ({ y, poseState }: { y: [number, number, number], poseState: string }) => {
     const color = poseState === "locked" ? "cyan" : poseState === "aligning" ? "yellow" : "#555";

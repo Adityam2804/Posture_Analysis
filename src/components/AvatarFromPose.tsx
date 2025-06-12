@@ -21,7 +21,7 @@ type Props = {
 
 export default function AvatarFromPose({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation = PersonOrientation.FRONT }: Props) {
     return (
-        <div style={{ position: 'absolute', top: 150, left: 300, width: '100%', maxWidth: '1000px', zIndex: 5, aspectRatio: '4/3', margin: '0 auto', }}>
+        <div style={{ position: 'absolute', top: 25, left: 0, width: '100%', zIndex: 5, aspectRatio: '4/3', margin: '0 auto', }}>
             <Canvas camera={{ position: [0, 1.5, 2.5], fov: 35 }}>
                 <ambientLight />
                 <directionalLight position={[0, 2, 2]} intensity={1} />
@@ -47,11 +47,11 @@ function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation
 
     const scale = 1.3;
     const yOffset = -1.2;
-    const zOffset = 2;
+    const zOffset = 1;
     const EXCLUDED_FACE_INDICES = new Set([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     function landmarkToVrmCoords(lm: NormalizedLandmark) {
         return new THREE.Vector3(
-            (lm.x - 0.5) * scale + 2,
+            (lm.x - 0.5) * scale + 3,
             (1 - lm.y) * scale + yOffset,
             -lm.z * scale + zOffset
         );
@@ -71,8 +71,8 @@ function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation
         const time = clock.current.getElapsedTime();
         if (!vrmRef.current || !poseWorldLandmarks || !poseLandmarks) return;
 
-        vrmRef.current.scene.position.set(0, -1.5, -1);
-        if (!fullVisible) {
+        vrmRef.current.scene.position.set(0, -1.5, -2);
+        if (fullVisible) {
 
             markersRef.current.forEach((marker) => vrmRef.current!.scene.remove(marker));
             markersRef.current = [];
@@ -118,7 +118,7 @@ function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation
             markersRef.current.push(group);
         }
 
-        if (fullVisible) {
+        if (!fullVisible) {
             animateRetreatLegs(vrmRef.current, time);
         } else {
             const solved = Pose.solve(poseWorldLandmarks, poseLandmarks, {
