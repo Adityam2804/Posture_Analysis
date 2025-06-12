@@ -70,7 +70,7 @@ export const RIGHT_VIEW_CONNECTIONS = [
 ];
 export const BACK_VIEW_CONNECTIONS = FRONT_VIEW_CONNECTIONS;
 export const CRITICAL_JOINTS = {
-  FRONT: new Set([11, 12, 23, 24, 25, 26, 27, 28]), // Shoulders to ankles
+  FRONT: new Set([11, 12, 23, 24, 25, 26, 27, 28]),
   LEFT: new Set([11, 13, 15, 23, 25, 27]),
   RIGHT: new Set([12, 14, 16, 24, 26, 28]),
 };

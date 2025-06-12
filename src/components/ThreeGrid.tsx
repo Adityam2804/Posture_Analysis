@@ -4,12 +4,19 @@ import { useEffect, useRef } from "react";
 import { Text } from "@react-three/drei";
 import { useSpring, animated } from '@react-spring/three';
 import { OrbitControls } from "@react-three/drei";
+import { useGLTF } from '@react-three/drei';
+import AvatarRigged from "./Avatar";
+import { NormalizedLandmark } from "@mediapipe/tasks-vision";
+import AvatarFromPose from "./AvatarFromPose";
 type ThreeGridProps = {
     userPosition: [number, number, number];
     feetY: [number, number, number]; // <- NEW: Y coordinate of feet in world space
     poseState: "searching" | "aligning" | "locked" | "too_far" | "too_close";
-    showGrid: boolean;
+    mode: "grid" | "grid-avatar" | "image" | "blank";
+    poseLandmarks: NormalizedLandmark[] | null;
+    poseWorldLandmarks?: NormalizedLandmark[] | null;
 };
+
 const GridTunnel = () => {
     const rects = [];
     const depth = 10;
@@ -48,91 +55,97 @@ const ResizeCamera = () => {
     return null;
 };
 
-const ThreeGrid = ({ userPosition, feetY, poseState, showGrid }: ThreeGridProps) => {
+const ThreeGrid = ({ userPosition, feetY, poseState, mode, poseLandmarks, poseWorldLandmarks }: ThreeGridProps) => {
     return (
-        showGrid ? (
-            <div
-                style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: "100%",
-                    zIndex: 1,
-                    pointerEvents: "none",
-                }}
-            >
-                <Canvas
-                    camera={{ position: [0, 2, 10], fov: 75 }}
-                    style={{ background: "transparent" }}
+        mode === 'grid' || mode === 'grid-avatar' ? (
+            <>
+
+                <div
+                    style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: "100%",
+                        zIndex: 1,
+                        pointerEvents: "none",
+                    }}
                 >
-                    <ResizeCamera />
-                    <ambientLight intensity={0.4} />
-                    <GridFloor y={feetY} poseState={poseState} />
-                    {/* <GridTunnel /> */}
 
-                    {['too_close', 'too_far', 'aligning'].includes(poseState) && (
-                        <>
-                            {[-4, -2, 0, 2, 4].map((x) => {
-                                if (poseState === 'too_close') {
-                                    return <ArrowTrail key={`back-${x}`} direction="backward" x={x} userZ={userPosition[2]} />;
-                                }
-                                if (poseState === 'too_far') {
-                                    return <ArrowTrail key={`for-${x}`} direction="forward" x={x} userZ={userPosition[2]} />;
-                                }
-                                if (poseState === 'aligning') {
-                                    return (
-                                        <>
-                                            <ArrowTrail key={`back-${x}`} direction="backward" x={x} userZ={userPosition[2]} />
-                                            <ArrowTrail key={`for-${x}`} direction="forward" x={x} userZ={userPosition[2]} />
-                                        </>
-                                    );
-                                }
-                                return null;
-                            })}
-                        </>
-                    )}
+                    <Canvas
+                        camera={{ position: [0, 2, 10], fov: 75 }}
+                        style={{ background: "transparent" }}
+                    >
+                        <ResizeCamera />
+                        <ambientLight intensity={0.4} />
+                        <GridFloor y={feetY} poseState={poseState} />
 
-                    <UserMarker position={userPosition} />
-                    {poseState === 'too_close' && (
-                        <Text
-                            position={[-6, 2.5, userPosition[2] + 2]}
-                            fontSize={0.5}
-                            color="orange"
-                            anchorX="center"
-                            anchorY="middle"
-                        >
-                            Step Back
-                        </Text>
-                    )}
+                        {/* <GridTunnel /> */}
 
-                    {poseState === 'too_far' && (
-                        <Text
-                            position={[0, 2.5, userPosition[2] - 2]}
-                            fontSize={0.5}
-                            color="lime"
-                            anchorX="center"
-                            anchorY="middle"
-                        >
-                            Move Forward
-                        </Text>
-                    )}
+                        {['too_close', 'too_far', 'aligning'].includes(poseState) && (
+                            <>
+                                {[-4, -2, 0, 2, 4].map((x) => {
+                                    if (poseState === 'too_close') {
+                                        return <ArrowTrail key={`back-${x}`} direction="backward" x={x} userZ={userPosition[2]} />;
+                                    }
+                                    if (poseState === 'too_far') {
+                                        return <ArrowTrail key={`for-${x}`} direction="forward" x={x} userZ={userPosition[2]} />;
+                                    }
+                                    if (poseState === 'aligning') {
+                                        return (
+                                            <>
+                                                <ArrowTrail key={`back-${x}`} direction="backward" x={x} userZ={userPosition[2]} />
+                                                <ArrowTrail key={`for-${x}`} direction="forward" x={x} userZ={userPosition[2]} />
+                                            </>
+                                        );
+                                    }
+                                    return null;
+                                })}
+                            </>
+                        )}
 
-                    {poseState === 'aligning' && (
-                        <Text
-                            position={[-4, 2.5, userPosition[2] - 2]}
-                            fontSize={0.5}
-                            color="orange"
-                            anchorX="center"
-                            anchorY="middle"
-                        >
-                            Alright
-                        </Text>
-                    )}
+                        <UserMarker position={userPosition} />
+                        {poseState === 'too_close' && (
+                            <Text
+                                position={[-6, 2.5, userPosition[2] + 2]}
+                                fontSize={0.5}
+                                color="orange"
+                                anchorX="center"
+                                anchorY="middle"
+                            >
+                                Step Back
+                            </Text>
+                        )}
 
-                    {/* <OrbitControls /> // You can enable for dev/debugging */}
-                </Canvas>
-            </div>
+                        {poseState === 'too_far' && (
+                            <Text
+                                position={[0, 2.5, userPosition[2] - 2]}
+                                fontSize={0.5}
+                                color="lime"
+                                anchorX="center"
+                                anchorY="middle"
+                            >
+                                Move Forward
+                            </Text>
+                        )}
+
+                        {poseState === 'aligning' && (
+                            <Text
+                                position={[-4, 2.5, userPosition[2] - 2]}
+                                fontSize={0.5}
+                                color="orange"
+                                anchorX="center"
+                                anchorY="middle"
+                            >
+                                Alright
+                            </Text>
+                        )}
+
+                        {/* <OrbitControls /> // You can enable for dev/debugging */}
+                    </Canvas>
+
+                </div>
+            </>
         ) : <></>
     );
 };

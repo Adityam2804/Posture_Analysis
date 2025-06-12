@@ -18,6 +18,10 @@ import {
     drawVisibilityScores,
 } from '../utils/poseHelpers';
 import { LANDMARK_LABELS, FRONT_VIEW_CONNECTIONS, LEFT_VIEW_CONNECTIONS, RIGHT_VIEW_CONNECTIONS, PersonOrientation } from '../utils/landmarklabels';
+import { Canvas } from '@react-three/fiber';
+import { Suspense } from 'react';
+import { Pose } from 'kalidokit';
+import AvatarFromPose from './AvatarFromPose';
 
 
 const PoseTracker: React.FC = () => {
@@ -53,17 +57,33 @@ const PoseTracker: React.FC = () => {
     type PoseState = "searching" | "aligning" | "locked" | "too_far" | "too_close";
     const stabilityStartRef = useRef<number | null>(null);
     const [frozenFeetY, setFrozenFeetY] = useState<[number, number, number] | null>(null);
-    type BackgroundMode = 'blank' | 'image' | 'grid';
+    type BackgroundMode = 'blank' | 'image' | 'grid' | 'grid-avatar';
     const [backgroundMode, setBackgroundMode] = useState<BackgroundMode>('blank');
     const [customImage, setCustomImage] = useState<string | null>(null);
-
+    const [poseData, setPoseData] = useState<any>(null);
+    const [fullbodyMode, setAllVisible] = useState<boolean>(false);
     const freezeGridAt = (feet: [number, number, number]) => {
         if (!frozenFeetY) {
             setFrozenFeetY(feet);
 
         }
     };
+    useEffect(() => {
+        const results = poseResultsRef.current;
+        const videoEl = videoRef.current;
+        if (results?.landmarks && results?.worldLandmarks && videoEl) {
+            const solved = Pose.solve(
+                results.worldLandmarks?.[0], // 3D landmarks
+                results.landmarks?.[0],      // 2D landmarks
+                {
+                    runtime: 'mediapipe',
+                    video: videoEl,
+                }
+            );
 
+            if (solved) setPoseData(solved);
+        }
+    }, [poseResultsRef.current]);
     const enterFullscreen = () => {
         const container = containerRef.current;
         if (!container) return;
@@ -129,6 +149,23 @@ const PoseTracker: React.FC = () => {
 
         return null; // Not found
     }
+    function posterizeImageData(imageData: ImageData, levels = 4, contrast = 1.2) {
+        const data = imageData.data;
+        const step = 255 / (levels - 1);
+
+        for (let i = 0; i < data.length; i += 4) {
+            // Simple contrast enhancement (normalize, scale, clamp)
+            for (let c = 0; c < 3; c++) {
+                let v = data[i + c] / 255;
+                v = ((v - 0.5) * contrast + 0.5) * 255;
+                v = Math.min(255, Math.max(0, v));
+
+                // Posterize
+                data[i + c] = Math.round(v / step) * step;
+            }
+            // alpha remains untouched
+        }
+    }
 
     const processVideo = async (timestamp: number) => {
         if (timestamp - lastTime < FRAME_INTERVAL) {
@@ -186,7 +223,7 @@ const PoseTracker: React.FC = () => {
                 const x = Math.floor(pt.x * canvas.width);
                 const y = Math.floor(pt.y * canvas.height);
 
-                const radius = 10;
+                const radius = 15;
 
                 for (let dy = -radius; dy <= radius; dy++) {
                     for (let dx = -radius; dx <= radius; dx++) {
@@ -240,10 +277,19 @@ const PoseTracker: React.FC = () => {
                 const isLandmarkBoosted = landmarkPixelSet.has(i);
 
                 if (isSegmentPerson || isLandmarkBoosted) {
-                    blended.data[offset] = original.data[offset];
-                    blended.data[offset + 1] = original.data[offset + 1];
-                    blended.data[offset + 2] = original.data[offset + 2];
-                    blended.data[offset + 3] = 255;
+
+                    if (backgroundMode === 'grid-avatar') {
+                        blended.data[offset] = 0;
+                        blended.data[offset + 1] = 0;
+                        blended.data[offset + 2] = 0;
+                        blended.data[offset + 3] = 0;
+                    }
+                    else {
+                        blended.data[offset] = original.data[offset];
+                        blended.data[offset + 1] = original.data[offset + 1];
+                        blended.data[offset + 2] = original.data[offset + 2];
+                        blended.data[offset + 3] = 255;
+                    }
                     personPixelCount++;
                 } else {
                     blended.data[offset] = 0;
@@ -253,37 +299,69 @@ const PoseTracker: React.FC = () => {
                 }
             }
 
+            backgroundMode === 'grid' && posterizeImageData(blended, 5);
+            // Draw mask onto a temporary canvas
+            if (backgroundMode === 'grid') {
+                const maskCanvas = document.createElement('canvas');
+                maskCanvas.width = canvas.width;
+                maskCanvas.height = canvas.height;
+                const maskCtx = maskCanvas.getContext('2d')!;
+                const maskImage = maskCtx.createImageData(canvas.width, canvas.height);
 
+                for (let i = 0; i < mask.length; i++) {
+                    const offset = i * 4;
+                    const val = [1, 2, 3, 4].includes(mask[i]) || landmarkPixelSet.has(i) ? 255 : 0;
+                    maskImage.data[offset] = val;
+                    maskImage.data[offset + 1] = val;
+                    maskImage.data[offset + 2] = val;
+                    maskImage.data[offset + 3] = 255;
+                }
+                maskCtx.putImageData(maskImage, 0, 0);
+
+                // Blur the mask to fill in missing pixels
+                maskCtx.filter = 'blur(4px)';
+                maskCtx.drawImage(maskCanvas, 0, 0);
+
+                // Use this blurred mask as alpha blending
+                const maskData = maskCtx.getImageData(0, 0, canvas.width, canvas.height);
+
+                for (let i = 0; i < mask.length; i++) {
+                    const offset = i * 4;
+                    const alpha = maskData.data[offset] / 255;
+                    blended.data[offset + 3] = blended.data[offset + 3] * alpha;
+                }
+
+            }
             if (personPixelCount > 1000) {
                 ctx.putImageData(blended, 0, 0);
             }
             if (personPixelCount < 1000) return;
 
-            const results = poseResultsRef.current;
-            if (results?.landmarks?.length > 0 && personPixelCount > 1000) {
-                const faceIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-                const facePoints = faceIndices.map(i => results.landmarks[0][i]);
+            // const results = poseResultsRef.current;
+            // if (results?.landmarks?.length > 0 && personPixelCount > 1000) {
+            //     const faceIndices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+            //     const facePoints = faceIndices.map(i => results.landmarks[0][i]);
 
-                const padding = 20;
-                const minX = Math.max(0, Math.min(...facePoints.map(p => p.x)) * canvas.width - padding);
-                const maxX = Math.min(canvas.width, Math.max(...facePoints.map(p => p.x)) * canvas.width + padding);
-                const minY = Math.max(0, Math.min(...facePoints.map(p => p.y)) * canvas.height - padding);
-                const maxY = Math.min(canvas.height, Math.max(...facePoints.map(p => p.y)) * canvas.height + padding);
+            //     const padding = 20;
+            //     const minX = Math.max(0, Math.min(...facePoints.map(p => p.x)) * canvas.width - padding);
+            //     const maxX = Math.min(canvas.width, Math.max(...facePoints.map(p => p.x)) * canvas.width + padding);
+            //     const minY = Math.max(0, Math.min(...facePoints.map(p => p.y)) * canvas.height - padding);
+            //     const maxY = Math.min(canvas.height, Math.max(...facePoints.map(p => p.y)) * canvas.height + padding);
 
-                const width = Math.max(1, maxX - minX);
-                const height = Math.max(1, maxY - minY);
+            //     const width = Math.max(1, maxX - minX);
+            //     const height = Math.max(1, maxY - minY);
 
-                const faceData = ctx.getImageData(minX, minY, width, height);
-                const tempCanvas = document.createElement('canvas');
-                tempCanvas.width = width;
-                tempCanvas.height = height;
-                const tempCtx = tempCanvas.getContext('2d')!;
-                tempCtx.putImageData(faceData, 0, 0);
-                tempCtx.filter = 'blur(8px)';
-                tempCtx.drawImage(tempCanvas, 0, 0);
-                const blurredFace = tempCtx.getImageData(0, 0, width, height);
-                ctx.putImageData(blurredFace, minX, minY);
-            }
+            //     const faceData = ctx.getImageData(minX, minY, width, height);
+            //     const tempCanvas = document.createElement('canvas');
+            //     tempCanvas.width = width;
+            //     tempCanvas.height = height;
+            //     const tempCtx = tempCanvas.getContext('2d')!;
+            //     tempCtx.putImageData(faceData, 0, 0);
+            //     tempCtx.filter = 'blur(8px)';
+            //     tempCtx.drawImage(tempCanvas, 0, 0);
+            //     const blurredFace = tempCtx.getImageData(0, 0, width, height);
+            //     ctx.putImageData(blurredFace, minX, minY);
+            // }
 
             segmentationResult.categoryMask.close();
         }
@@ -362,6 +440,7 @@ const PoseTracker: React.FC = () => {
                 getSmoothedVisibility(visibilityHistory.current, index) >
                 getAdaptiveThreshold(index)
             );
+            setAllVisible(allVisible);
             const feetVisible = leftFoot.visibility > 0.5 || rightFoot.visibility > 0.5;
             const allKeypointsVisible = allVisible; // already computed earlier
             const poseDepthZ = userPosition[2];
@@ -534,14 +613,13 @@ const PoseTracker: React.FC = () => {
                 stream.getTracks().forEach((track) => track.stop());
             }
         };
-    }, [backgroundReady]);
+    }, [backgroundReady, backgroundMode]);
 
     return (
         <>
-
-
-
+            {backgroundMode === 'grid-avatar' && <AvatarFromPose poseLandmarks={poseResultsRef.current?.landmarks?.[0] ?? null} poseWorldLandmarks={poseResultsRef.current?.worldLandmarks?.[0] ?? null} fullVisible={fullbodyMode} orientation={orientation} />}
             <div style={{ marginBottom: '16px', textAlign: 'center' }}>
+
                 <div style={{ marginBottom: '8px', fontWeight: 'bold', fontSize: '16px' }}>
                     Select Background Mode
                 </div>
@@ -564,6 +642,12 @@ const PoseTracker: React.FC = () => {
                         onClick={() => setBackgroundMode('grid')}
                     >
                         Grid
+                    </Button>
+                    <Button
+                        type={backgroundMode === 'grid-avatar' ? 'primary' : 'default'}
+                        onClick={() => setBackgroundMode('grid-avatar')}
+                    >
+                        Grid with Avatar
                     </Button>
                     <label htmlFor="bg-upload" style={{ margin: 0 }}>
                         <input
@@ -614,12 +698,15 @@ const PoseTracker: React.FC = () => {
                     backgroundColor: '#000',
                 }}
             >
+
                 <video
+
                     ref={videoRef}
                     style={{ display: 'none' }}
                     muted
                     playsInline
                 />
+
                 <Button
                     shape="circle"
                     icon={<FullscreenOutlined />}
@@ -649,13 +736,15 @@ const PoseTracker: React.FC = () => {
                         zIndex: 0,
                     }}
                 />)}
-                <ThreeGrid userPosition={userPosition} feetY={frozenFeetY ?? feetY} poseState={poseState} showGrid={backgroundMode === 'grid'} />
+                <ThreeGrid userPosition={userPosition} feetY={frozenFeetY ?? feetY} poseState={poseState} mode={backgroundMode} poseLandmarks={poseResultsRef.current?.landmarks?.[0] ?? null} poseWorldLandmarks={poseResultsRef.current?.worldLandmarks?.[0] ?? null} />
                 <canvas ref={rawCanvasRef} width={640} height={480} style={{ display: 'none' }} />
                 <canvas
+
                     ref={canvasRef}
                     width={640}
                     height={480}
                     style={{
+                        display: backgroundMode === 'grid-avatar' ? 'none' : 'block',
                         position: 'absolute',
                         top: 0,
                         left: 0,
@@ -680,7 +769,9 @@ const PoseTracker: React.FC = () => {
                 >
                     Orientation: <strong>{orientation}</strong> Confidence: <strong>{(orientationConfidence ?? 0).toFixed(2)}</strong>
                 </div>
+
             </div>
+
         </>
     );
 };
