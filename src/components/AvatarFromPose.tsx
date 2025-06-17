@@ -17,33 +17,67 @@ type Props = {
     poseLandmarks: NormalizedLandmark[] | null | undefined;
     fullVisible?: boolean;
     orientation?: PersonOrientation;
+    gender: 'male' | 'female';
 };
 
-export default function AvatarFromPose({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation = PersonOrientation.FRONT }: Props) {
+export default function AvatarFromPose({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation = PersonOrientation.FRONT, gender }: Props) {
     return (
         <div style={{ position: 'absolute', top: 25, left: 0, width: '100%', zIndex: 5, aspectRatio: '4/3', margin: '0 auto', }}>
+
             <Canvas camera={{ position: [0, 1.5, 2.5], fov: 35 }}>
                 <ambientLight />
                 <directionalLight position={[0, 2, 2]} intensity={1} />
 
-                <VRMAvatar poseWorldLandmarks={poseWorldLandmarks} poseLandmarks={poseLandmarks} fullVisible={fullVisible} orientation={orientation} />
+                <VRMAvatar poseWorldLandmarks={poseWorldLandmarks} poseLandmarks={poseLandmarks} fullVisible={fullVisible} orientation={orientation} gender={gender} />
             </Canvas>
         </div>
     );
 }
+// function logBones(vrm: VRM) {
+//     vrm.scene.traverse((object) => {
 
-function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation }: Props) {
+//         console.log(object.name);
+
+//     });
+// }
+function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation, gender }: Props) {
     const vrmRef = useRef<VRM | null>(null);
     const clock = useRef(new THREE.Clock());
     const [loaded, setLoaded] = useState(false);
     const markersRef = useRef<THREE.Object3D[]>([]);
     const BoneNameMap: Record<string, string> = {
-        Hips: 'J_Bip_C_Hips', Spine: 'J_Bip_C_Spine', Chest: 'J_Bip_C_Chest', Neck: 'J_Bip_C_Neck', Head: 'J_Bip_C_Head',
-        LeftShoulder: 'J_Bip_L_Shoulder', LeftUpperArm: 'J_Bip_L_UpperArm', LeftLowerArm: 'J_Bip_L_LowerArm', LeftHand: 'J_Bip_L_Hand',
-        RightShoulder: 'J_Bip_R_Shoulder', RightUpperArm: 'J_Bip_R_UpperArm', RightLowerArm: 'J_Bip_R_LowerArm', RightHand: 'J_Bip_R_Hand',
-        LeftUpperLeg: 'J_Bip_L_UpperLeg', LeftLowerLeg: 'J_Bip_L_LowerLeg', LeftFoot: 'J_Bip_L_Foot', LeftToes: 'J_Bip_L_ToeBase',
-        RightUpperLeg: 'J_Bip_R_UpperLeg', RightLowerLeg: 'J_Bip_R_LowerLeg', RightFoot: 'J_Bip_R_Foot', RightToes: 'J_Bip_R_ToeBase',
+        Hips: 'CC_Base_Hip',
+        Spine: 'CC_Base_Spine01',
+        Chest: 'CC_Base_Spine02',
+        Neck: 'CC_Base_NeckTwist01',
+        Head: 'CC_Base_Head',
+
+        LeftShoulder: 'CC_Base_L_Clavicle',
+        LeftUpperArm: 'CC_Base_L_Upperarm',
+        LeftLowerArm: 'CC_Base_L_Forearm',
+        LeftHand: 'CC_Base_L_Hand',
+
+        RightShoulder: 'CC_Base_R_Clavicle',
+        RightUpperArm: 'CC_Base_R_Upperarm',
+        RightLowerArm: 'CC_Base_R_Forearm',
+        RightHand: 'CC_Base_R_Hand',
+
+        LeftUpperLeg: 'CC_Base_L_Thigh',
+        LeftLowerLeg: 'CC_Base_L_Calf',
+        LeftFoot: 'CC_Base_L_Foot',
+        LeftToes: 'CC_Base_L_ToeBaseShareBone',
+
+        RightUpperLeg: 'CC_Base_R_Thigh',
+        RightLowerLeg: 'CC_Base_R_Calf',
+        RightFoot: 'CC_Base_R_Foot',
+        RightToes: 'CC_Base_R_ToeBase',
+
+        LeftEye: 'CC_Base_L_Eye',
+        RightEye: 'CC_Base_R_Eye',
+        Jaw: 'CC_Base_JawRoot',
     };
+
+
 
     const scale = 1.3;
     const yOffset = -1.2;
@@ -57,15 +91,19 @@ function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation
         );
     }
     useEffect(() => {
+        setLoaded(false);
         const loader = new GLTFLoader();
         loader.register((parser) => new VRMLoaderPlugin(parser));
-        loader.load('/avatar.vrm', (gltf) => {
+        const modelUrl = gender == 'male' ? '/avatar-man.vrm' : '/avatar-women.vrm';
+
+        loader.load(modelUrl, (gltf) => {
             const vrm = gltf.userData.vrm as VRM;
+
             vrm.scene.rotation.y = Math.PI;
             vrmRef.current = vrm;
             setLoaded(true);
         });
-    }, []);
+    }, [gender]);
 
     useFrame(() => {
         const time = clock.current.getElapsedTime();
@@ -146,23 +184,25 @@ function VRMAvatar({ poseWorldLandmarks, poseLandmarks, fullVisible, orientation
 
 function animateRetreatLegs(vrm: VRM, time: number) {
     const legSwing = Math.sin(time * 6) * 0.5;
-    const headShake = Math.sin(time * 3) * 0.5;
-    const rotateLeg = (name: string, angleX: number) => {
+    const headShake = Math.sin(time * 3) * 0.3;
+
+    const rotateBone = (name: string, angleX: number, angleY = 0, angleZ = 0) => {
         const bone = vrm.scene.getObjectByName(name) as THREE.Object3D;
         if (!bone) return;
-        const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(angleX, 0, 0));
+        const targetQuat = new THREE.Quaternion().setFromEuler(
+            new THREE.Euler(angleX, angleY, angleZ)
+        );
         bone.quaternion.slerp(targetQuat, 0.2);
     };
-    const shakeHead = (angleY: number) => {
-        const bone = vrm.scene.getObjectByName('J_Bip_C_Head') as THREE.Object3D;
-        if (!bone) return;
-        const targetQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, angleY, 0));
-        bone.quaternion.slerp(targetQuat, 0.2);
-    };
-    rotateLeg('J_Bip_L_UpperLeg', -legSwing);
-    rotateLeg('J_Bip_R_UpperLeg', +legSwing);
-    shakeHead(headShake);
+
+    // Swing legs
+    rotateBone('CC_Base_L_Thigh', -legSwing);
+    rotateBone('CC_Base_R_Thigh', legSwing);
+
+    // Shake head
+    rotateBone('CC_Base_Head', 0, headShake);
 }
+
 
 function animatePose(vrm: VRM, pose: ReturnType<typeof Pose.solve> | undefined, BoneNameMap: Record<string, string>) {
     if (!pose) return;

@@ -62,6 +62,7 @@ const PoseTracker: React.FC = () => {
     const [customImage, setCustomImage] = useState<string | null>(null);
     const [poseData, setPoseData] = useState<any>(null);
     const [fullbodyMode, setAllVisible] = useState<boolean>(false);
+    const [gender, setGender] = useState<'male' | 'female'>('male');
     const freezeGridAt = (feet: [number, number, number]) => {
         if (!frozenFeetY) {
             setFrozenFeetY(feet);
@@ -683,6 +684,12 @@ const PoseTracker: React.FC = () => {
                             Remove Custom Image
                         </Button>
                     </label>
+                    {backgroundMode === 'grid-avatar' && <Button
+                        onClick={() => setGender(g => (g === 'male' ? 'female' : 'male'))}
+
+                    >
+                        Switch to {gender === 'male' ? 'Female' : 'Male'}
+                    </Button>}
                 </div>
             </div>
 
@@ -698,7 +705,7 @@ const PoseTracker: React.FC = () => {
                     backgroundColor: '#000',
                 }}
             >
-                {backgroundMode === 'grid-avatar' && <AvatarFromPose poseLandmarks={poseResultsRef.current?.landmarks?.[0] ?? null} poseWorldLandmarks={poseResultsRef.current?.worldLandmarks?.[0] ?? null} fullVisible={fullbodyMode} orientation={orientation} />}
+                {backgroundMode === 'grid-avatar' && <AvatarFromPose poseLandmarks={poseResultsRef.current?.landmarks?.[0] ?? null} poseWorldLandmarks={poseResultsRef.current?.worldLandmarks?.[0] ?? null} fullVisible={fullbodyMode} orientation={orientation} gender={gender} />}
                 <video
                     ref={videoRef}
                     style={{ display: 'none' }}

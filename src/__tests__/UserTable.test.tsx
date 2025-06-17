@@ -164,7 +164,7 @@ test('filters profiles by role', async () => {
     const mock = new MockAdapter(api);
     mock.onGet(/\/profiles.*/).reply(config => {
         const role = config.params?.role;
-        console.log('role:', role);
+
         let data;
 
         if (role === 'Super Admin') {
